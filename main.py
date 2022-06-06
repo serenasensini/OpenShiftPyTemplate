@@ -1,6 +1,7 @@
 from PyInquirer import prompt
 from examples import custom_style_2
 from prompt_toolkit.validation import Validator, ValidationError
+import re
 
 template = {
     "apiVersion": "template.openshift.io/v1",
@@ -8,14 +9,36 @@ template = {
     "objects": []
 }
 
-# class NumberValidator(Validator):
-#
-#     def validate(self, document):
-#         try:
-#             int(document.text)
-#         except ValueError:
-#             raise ValidationError(message="Please enter a number",
-#                                   cursor_position=len(document.text))
+
+class NumberValidator(Validator):
+
+    def validate(self, document):
+        try:
+            int(document.text)
+        except ValueError:
+            raise ValidationError(message="Please enter a number",
+                                  cursor_position=len(document.text))
+
+
+class RFC1123Validator(Validator):
+
+    # def contains_number(self, value):
+    #     return any(not c.isdigit() for c in value)
+
+    def contains_symbols(self, value):
+        regex = re.compile('^(?![0-9]+$)(?!-)[a-zA-Z0-9-]{,63}(?<!-)$')
+        is_match = regex.match(value) is not None
+        return is_match
+
+    def validate(self, document):
+        try:
+            check = document.text.lower()
+            if not self.contains_symbols(check):
+                raise ValueError
+        except ValueError:
+            raise ValidationError(
+                message="Please enter a valid name. Only lower case alphanumeric characters, '-' or '.' are allowed.",
+                cursor_position=len(document.text))
 
 
 start = [
@@ -26,15 +49,12 @@ start = [
     },
 ]
 
-template_name = [
+metadata = [
     {
         'type': 'input',
         'name': 'name',
         'message': 'Let\'s start with the metadata. Choose a name for your template'
-    }
-]
-
-metadata = [
+    },
     {
         'type': 'input',
         'name': 'openshift.io/display-name',
@@ -52,7 +72,7 @@ metadata = [
     },
     {
         'type': 'input',
-        'name': 'openshift.io/provider-display-name',
+        'name': 'openshift.io/provider',
         'message': 'Provider'
     },
     {
@@ -89,22 +109,29 @@ deployment_config_spec = [
         'type': 'list',
         'name': 'apiVersion',
         'message': 'API Version?',
-        'choices': ["v1", "beta"]
+        'choices': ["apps.openshift.io/v1", "v1"]
     },
     {
         'type': 'input',
         'name': 'name',
-        'message': 'Name'
+        'message': 'Name',
+        'validate': RFC1123Validator
     },
     {
         'type': 'input',
         'name': 'replicas',
-        'message': 'Number of pod replicas'
+        'message': 'Number of pod replicas',
+        'validate': NumberValidator
     },
     {
         'type': 'input',
         'name': 'image',
         'message': 'Image URL'
+    },
+    {
+        'type': 'input',
+        'name': 'image_name',
+        'message': 'Image Name'
     },
     {
         'type': 'input',
@@ -117,7 +144,7 @@ deployment_config_spec = [
         'message': 'Protocol',
         'choices': ["TCP", "UDP"]
     },
-{
+    {
         'type': 'input',
         'name': 'selector_value',
         'message': 'Selector value'
@@ -150,21 +177,21 @@ service_def = [
         'message': 'Container port'
     },
     {
-        'type': 'list',
-        'name': 'protocol',
-        'message': 'Protocol',
-        'choices': ["TCP", "UDP"]
-    },
-    {
         'type': 'input',
         'name': 'targetPort',
         'message': 'Target Port'
     },
     {
         'type': 'list',
+        'name': 'protocol',
+        'message': 'Protocol',
+        'choices': ["TCP", "UDP"]
+    },
+    {
+        'type': 'list',
         'name': 'selector_resource',
         'message': 'Selector resource',
-        'choices': ["deploymentconfig", "imagestream"]
+        'choices': ["deploymentconfig", "deployment", "imagestream"]
     },
     {
         'type': 'input',
@@ -179,9 +206,11 @@ def general_infos(args):
     metadata = {"metadata": {
         "annotations": {
 
-        }
+        },
+        "name": ""
     }}
 
+    metadata['metadata']['name'] = args.get("name").lower() if args.get("name") else ''
     metadata['metadata']['annotations']['openshift.io/display-name'] = args.get(
         "openshift.io/display-name") if args.get("openshift.io/display-name") else ''
     metadata['metadata']['annotations']['openshift.io/documentation-url'] = args.get(
@@ -190,8 +219,8 @@ def general_infos(args):
         "description") if args.get("description") else ''
     metadata['metadata']['annotations']['openshift.io/long-description'] = args.get(
         "openshift.io/long-description") if args.get("openshift.io/long-description") else ''
-    metadata['metadata']['annotations']['openshift.io/display-name'] = args.get(
-        "openshift.io/provider-display-name") if args.get("openshift.io/provider-display-name") else ''
+    metadata['metadata']['annotations']['openshift.io/provider'] = args.get(
+        "openshift.io/provider") if args.get("openshift.io/provider") else ''
     metadata['metadata']['annotations']['tags'] = args.get(
         "tags") if args.get("tags") else ''
 
@@ -199,39 +228,75 @@ def general_infos(args):
 
 
 def object_definition(kind, spec):
-
+    # ONLY FOR DC
+    # FIXME: missing env & volumes
     object = {
         "apiVersion": spec.get("apiVersion"),
         "kind": kind,
-        "metadata": {},
-        "spec": {
-            "selector": {}
+        "metadata": {
+            "name": spec.get("name") if spec.get("name") else '',
+            "labels":
+                {
+                    "app": spec.get("selector_value"),
+                }
         },
-        "template": {
-            "spec": {
-                "containers": [],
-                "restartPolicy": "Always",
-                "terminationGracePeriodSeconds": 30,
-                "dnsPolicy": "ClusterFirst",
-                "securityContext": {}
-            }
-        }
+
+        "spec": {
+            "selector": {
+                "app": spec.get("selector_value"),
+                "deploymentconfig": spec.get("selector_value")
+            },
+            "replicas": int(spec.get('replicas')) if spec.get('replicas') else 0,
+            "strategy": {
+                "type": "Rolling",
+                "rollingParams": {
+                    "updatePeriodSeconds": 1,
+                    "intervalSeconds": 1,
+                    "timeoutSeconds": 600,
+                    "maxUnavailable": "25%",
+                    "maxSurge": "25%"
+                },
+                "resources": {},
+                "activeDeadlineSeconds": 1800
+            },
+            "template": {
+                "metadata": {
+                    "labels": {
+                        "app": spec.get("selector_value"),
+                        "deploymentconfig": spec.get("selector_value")
+                    }
+                },
+                "spec": {
+                    "containers": [],
+                    "restartPolicy": "Always",
+                    "terminationGracePeriodSeconds": 30,
+                    "dnsPolicy": "ClusterFirst",
+                    "securityContext": {}
+                }
+            },
+            "triggers": [
+                {
+                    "type": "ConfigChange"
+                }
+            ]
+        },
     }
 
-    object['metadata']['name'] = spec.get(
-        "name") if spec.get("name") else ''
-
-    object['spec']['replicas'] = spec.get('replicas') if spec.get('replicas') else ''
-    object['spec']['selector']['deploymentconfig'] = spec.get('selector_value')
-    object['template']['spec']['containers'].append({
+    object['spec']['template']['spec']['containers'].append({
         'image': spec.get('image') if spec.get('image') else '',
+        'name': spec.get('image_name') if spec.get('image_name') else '',
         'ports': [
             {
-                "containerPort": spec.get('containerPort'),
+                "containerPort": int(spec.get('containerPort')),
                 "protocol": spec.get('protocol')
             }
         ] if spec.get('containerPort') else '',
-        "imagePullPolicy": "Always"
+        "imagePullPolicy": "Always",
+        "terminationMessagePolicy": "File",
+        # "command": [
+        #     "/bin/sleep",
+        #     "3650d"
+        # ],
     })
 
     print(object)
@@ -242,14 +307,16 @@ def service_definition(spec):
     object = {
         "apiVersion": spec.get("apiVersion"),
         "kind": "Service",
-        "metadata": {},
+        "metadata": {
+            "name": spec.get("name")
+        },
         "spec": {
             "ports": [
                 {
-                    "name": spec.get("name"),
+                    "name": spec.get("port") + "-" + spec.get("protocol").lower(),
                     "protocol": spec.get("protocol"),
-                    "port": spec.get("port"),
-                    "targetPort": spec.get("targetPort")
+                    "port": int(spec.get("port")),
+                    "targetPort": int(spec.get("targetPort"))
                 }
             ],
             "selector": {
@@ -266,9 +333,7 @@ def service_definition(spec):
 
 def main():
     answers = prompt(start, style=custom_style_2)
-    if answers.get("user_option") :
-        ans_template_name = prompt(template_name, style=custom_style_2)
-        template.update(ans_template_name)
+    if answers.get("user_option"):
         ans_metadata = prompt(metadata, style=custom_style_2)
         template.update(general_infos(ans_metadata))
 
@@ -279,13 +344,14 @@ def main():
             # metadata
             ans_container_def = prompt(deployment_config_spec, style=custom_style_2)
             object_definition('DeploymentConfig', ans_container_def)
-            # FIXME spec:strategy
-            # FIXME spec:selector
 
         ans_service_choice = prompt(service_choice, style=custom_style_2)
         if ans_service_choice.get('service_choice'):
             ans_service_def = prompt(service_def, style=custom_style_2)
             service_definition(ans_service_def)
+        # FIXME: missing route definition
+        # FIXME: missing configmap definition
+        # FIXME: missing secret definition
 
     print("Final result:")
     print(template)
