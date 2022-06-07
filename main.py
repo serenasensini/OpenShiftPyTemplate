@@ -99,13 +99,6 @@ template_metadata = [
         'name': 'tags',
         'message': 'Tags (comma-separated values)'
     },
-    # {
-    #     'type': "input",
-    #     "name": "b",
-    #     "message": "Enter the second number",
-    #     # "validate": NumberValidator,
-    #     "filter": lambda val: int(val)
-    # }
 
 ]
 
@@ -151,7 +144,7 @@ deploymentconfig_def = [
         'type': 'input',
         'name': 'containerPort',
         'message': 'Port',
-        # 'validator': PortValidator
+        # 'validate': PortValidator
     },
     {
         'type': 'list',
@@ -182,13 +175,13 @@ service_def = [
         'type': 'input',
         'name': 'port',
         'message': 'Container port',
-        # 'validator': PortValidator
+        'validate': PortValidator
     },
     {
         'type': 'input',
         'name': 'targetPort',
         'message': 'Target Port',
-        # 'validator': PortValidator
+        'validate': PortValidator
     },
     {
         'type': 'list',
@@ -294,8 +287,14 @@ secret_def = [
         'type': 'input',
         'name': 'tot_data',
         'message': 'How many entries do you want to configure?',
-        # 'validator': NumberValidator
-    }
+        'validate': NumberValidator
+    },
+    {
+        'type': 'input',
+        'name': 'replicas',
+        'message': 'Number of pod replicas',
+        'validate': NumberValidator
+    },
 ]
 
 secret_data = [
@@ -311,6 +310,38 @@ secret_data = [
     }
 ]
 
+configmap_def = [
+    {
+        'type': 'list',
+        'name': 'apiVersion',
+        'message': 'API Version',
+        'choices': ["v1"]
+    },
+    {
+        'type': 'input',
+        'name': 'name',
+        'message': 'Name'
+    },
+    {
+        'type': 'input',
+        'name': 'tot_data',
+        'message': 'How many entries do you want to configure?',
+        'validate': NumberValidator
+    }
+]
+
+configmap_data = [
+    {
+        'type': 'input',
+        'name': 'key',
+        'message': 'Key'
+    },
+    {
+        'type': 'input',
+        'name': 'value',
+        'message': 'Value'
+    }
+]
 
 def general_infos(args):
     metadata = {"metadata": {
@@ -482,6 +513,21 @@ def route_definition(spec):
     #     }
 
 
+def configmap_definition(apiVersion, name, data):
+    object = {
+        "apiVersion": apiVersion,
+        "data": data,
+        "kind": "ConfigMap",
+        "metadata": {
+            "name": name,
+        },
+        "type": "Opaque"
+    }
+
+    template['objects'].append(object)
+
+
+
 def secret_definition(apiVersion, name, data):
     object = {
         "apiVersion": apiVersion,
@@ -565,7 +611,7 @@ def main():
                 data = {}
                 ans_secret_def = prompt(secret_def, style=custom_style_2)
                 count = ans_secret_def.get('tot_data')
-                for occurence in range(0, int(count)):
+                for occurrence in range(0, int(count)):
                     ans_secret_data = prompt(secret_data, style=custom_style_2)
                     key = ans_secret_data.get('key')
                     value = ans_secret_data.get('value')
@@ -573,8 +619,15 @@ def main():
                 secret_definition(ans_secret_def.get("apiVersion"), ans_secret_def.get("name"), data)
 
             elif ans_objects_choice.get("resource_select") == "ConfigMap":
-                # FIXME: missing configmap definition
-                print("Not ready yet. Choose another one!")
+                data = {}
+                ans_configmap_def = prompt(configmap_def, style=custom_style_2)
+                count = ans_configmap_def.get('tot_data')
+                for occurrence in range(0, int(count)):
+                    ans_configmap_data = prompt(configmap_data, style=custom_style_2)
+                    key = ans_configmap_data.get('key')
+                    value = ans_configmap_data.get('value')
+                    data[key] = value
+                configmap_definition(ans_configmap_def.get("apiVersion"), ans_configmap_def.get("name"), data)
 
             elif ans_objects_choice.get("resource_select") == "Exit!":
                 interrupt = False
