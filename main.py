@@ -2,6 +2,7 @@ from PyInquirer import prompt
 from examples import custom_style_2
 from prompt_toolkit.validation import Validator, ValidationError
 import re
+import json
 
 template = {
     "apiVersion": "template.openshift.io/v1",
@@ -16,7 +17,7 @@ class NumberValidator(Validator):
         try:
             int(document.text)
         except ValueError:
-            raise ValidationError(message="Please enter a number",
+            raise ValidationError(message="Please enter a number.",
                                   cursor_position=len(document.text))
 
 
@@ -41,15 +42,28 @@ class RFC1123Validator(Validator):
                 cursor_position=len(document.text))
 
 
+class PortValidator(Validator):
+
+    def validate(self, document):
+        try:
+            if 1 <= int(document.text) <= 32768:
+                return True
+            else:
+                raise ValueError
+        except ValueError:
+            raise ValidationError(message="Please enter a valid port.",
+                                  cursor_position=len(document.text))
+
+
 start = [
     {
         'type': 'confirm',
-        'name': 'user_option',
+        'name': 'start_option',
         'message': 'Welcome to simple OpenShift templating. Do you want to start?',
     },
 ]
 
-metadata = [
+template_metadata = [
     {
         'type': 'input',
         'name': 'name',
@@ -98,13 +112,13 @@ metadata = [
 objects = [
     {
         'type': 'list',
-        'name': 'deployment_choose',
+        'name': 'resource_select',
         'message': 'Which kind of resource do you want to define?',
-        'choices': ["DeploymentConfig", "Deployment"]
+        'choices': ["DeploymentConfig", "Deployment", "Service", "ConfigMap", "Secret", "Route", "None"]
     }
 ]
 
-deployment_config_spec = [
+deploymentconfig_def = [
     {
         'type': 'list',
         'name': 'apiVersion',
@@ -136,7 +150,8 @@ deployment_config_spec = [
     {
         'type': 'input',
         'name': 'containerPort',
-        'message': 'Port'
+        'message': 'Port',
+        # 'validator': PortValidator
     },
     {
         'type': 'list',
@@ -149,14 +164,6 @@ deployment_config_spec = [
         'name': 'selector_value',
         'message': 'Selector value'
     },
-]
-
-service_choice = [
-    {
-        'type': 'confirm',
-        'name': 'service_choice',
-        'message': 'Do you want to define a Service?'
-    }
 ]
 
 service_def = [
@@ -174,12 +181,14 @@ service_def = [
     {
         'type': 'input',
         'name': 'port',
-        'message': 'Container port'
+        'message': 'Container port',
+        # 'validator': PortValidator
     },
     {
         'type': 'input',
         'name': 'targetPort',
-        'message': 'Target Port'
+        'message': 'Target Port',
+        # 'validator': PortValidator
     },
     {
         'type': 'list',
@@ -191,7 +200,7 @@ service_def = [
         'type': 'list',
         'name': 'selector_resource',
         'message': 'Selector resource',
-        'choices': ["deploymentconfig", "deployment", "imagestream"]
+        'choices': ["deploymentconfig", "deployment", "imagestream", "None"]
     },
     {
         'type': 'input',
@@ -201,6 +210,73 @@ service_def = [
 
 ]
 
+route_select = [
+    {
+        'type': 'confirm',
+        'name': 'service_use',
+        'message': 'Do you want to use an existing service?',
+    },
+]
+
+route_def = [
+    {
+        'type': 'list',
+        'name': 'apiVersion',
+        'message': 'API Version',
+        'choices': ["route.openshift.io/v1", "v1"]
+    },
+    {
+        'type': 'input',
+        'name': 'name',
+        'message': 'Name'
+    },
+    {
+        'type': 'list',
+        'name': 'targetPort',
+        'message': 'Target Port',
+        'choices': []
+    },
+    {
+        'type': 'list',
+        'name': 'serviceName',
+        'message': 'Service name',
+        'choices': []
+    },
+    {
+        'type': 'confirm',
+        'name': 'enable_ssl',
+        'message': 'Enable HTTPS using redirect'
+    },
+]
+
+route_def_w_service = [
+    {
+        'type': 'list',
+        'name': 'apiVersion',
+        'message': 'API Version',
+        'choices': ["route.openshift.io/v1", "v1"]
+    },
+    {
+        'type': 'input',
+        'name': 'name',
+        'message': 'Name'
+    },
+    {
+        'type': 'input',
+        'name': 'targetPort',
+        'message': 'Target Port',
+    },
+    {
+        'type': 'input',
+        'name': 'serviceName',
+        'message': 'Service name',
+    },
+    {
+        'type': 'confirm',
+        'name': 'enable_ssl',
+        'message': 'Enable HTTPS using redirect'
+    },
+]
 
 def general_infos(args):
     metadata = {"metadata": {
@@ -299,7 +375,6 @@ def object_definition(kind, spec):
         # ],
     })
 
-    print(object)
     template['objects'].append(object)
 
 
@@ -319,45 +394,134 @@ def service_definition(spec):
                     "targetPort": int(spec.get("targetPort"))
                 }
             ],
-            "selector": {
-                spec.get("selector_resource"): spec.get("selector_value")
-            },
+            "selector": {},
             "type": "ClusterIP",
             "sessionAffinity": "None"
         }
     }
 
-    print(object)
+    if spec.get("selector_resource") != "None":
+        object['spec']['selector'] = {
+            spec.get("selector_resource"): spec.get("selector_value")
+        }
+
     template['objects'].append(object)
 
 
+def route_definition(spec):
+    object = {
+        "apiVersion": "v1",
+        "kind": "Route",
+        "metadata": {
+            "labels": {},
+            "name": spec.get("name")
+        },
+        "spec": {
+            "port": {
+                "targetPort": spec.get('targetPort')
+            },
+            "tls": {
+
+            },
+            "to": {
+                "kind": "Service",
+                "name": spec.get('serviceName'),
+                "weight": 100
+            },
+            "wildcardPolicy": "None"
+        }
+    }
+
+    if spec.get('enable_ssl'):
+        object['spec']['tls'] = {
+                "insecureEdgeTerminationPolicy": "Redirect",
+                "termination": "edge"
+            }
+    else:
+        del object['spec']['tls']
+
+    template['objects'].append(object)
+
+    # if spec.get("selector_resource") != "None":
+    #     object['spec']['selector'] = {
+    #         spec.get("selector_resource"): spec.get("selector_value")
+    #     }
+
+
+def get_services():
+    services_list = []
+    ports_list = []
+    template_json = json.dumps(template)
+    data = json.loads(template_json)
+    for item in data['objects']:
+        for key in item:
+            if key == 'kind' and item[key] == 'Service':
+                ports = item['spec']['ports']
+                for port in ports:
+                    ports_list.append(port['name'])
+                    services_list.append(item['metadata']['name'])
+    print(services_list)
+    return set(services_list), ports_list
+
+
 def main():
+    # START
     answers = prompt(start, style=custom_style_2)
-    if answers.get("user_option"):
-        ans_metadata = prompt(metadata, style=custom_style_2)
+    if answers.get("start_option"):
+        ans_metadata = prompt(template_metadata, style=custom_style_2)
         template.update(general_infos(ans_metadata))
 
-        # objects
+        # DEFINE: objects
 
-        ans_objects_choice = prompt(objects, style=custom_style_2)
-        if ans_objects_choice.get("deployment_choose") == "DeploymentConfig":
-            # metadata
-            ans_container_def = prompt(deployment_config_spec, style=custom_style_2)
-            object_definition('DeploymentConfig', ans_container_def)
+        interrupt = True
+        while interrupt:
+            # which object do you want to create?
+            ans_objects_choice = prompt(objects, style=custom_style_2)
 
-        ans_service_choice = prompt(service_choice, style=custom_style_2)
-        if ans_service_choice.get('service_choice'):
-            ans_service_def = prompt(service_def, style=custom_style_2)
-            service_definition(ans_service_def)
+            if ans_objects_choice.get("resource_select") == "DeploymentConfig":
+                # DEFINE: DC
+                ans_container_def = prompt(deploymentconfig_def, style=custom_style_2)
+                object_definition('DeploymentConfig', ans_container_def)
+
+            elif ans_objects_choice.get("resource_select") == "Service":
+                # DEFINE: service
+                ans_service_def = prompt(service_def, style=custom_style_2)
+                service_definition(ans_service_def)
+
+            elif ans_objects_choice.get("resource_select") == "Route":
+
+                ans_route_choice = prompt(route_select, style=custom_style_2)
+                if ans_route_choice.get('service_use'):
+                    # DEFINE: route
+                    services_list, ports_list = get_services()
+                    if len(services_list) > 0:
+                        for item in route_def:
+                            if item['name'] == 'serviceName':
+                                item['choices'] = services_list
+                            elif item['name'] == 'targetPort':
+                                item['choices'] = ports_list
+
+                        ans_route_def = prompt(route_def, style=custom_style_2)
+                        route_definition(ans_route_def)
+                    else:
+                        print("No services found in current template. ")
+
+                        ans_route_def = prompt(route_def_w_service, style=custom_style_2)
+                        route_definition(ans_route_def)
+
+            elif ans_objects_choice.get("resource_select") == "None":
+                interrupt = False
+
+
         # FIXME: missing route definition
         # FIXME: missing configmap definition
         # FIXME: missing secret definition
 
-    print("Final result:")
-    print(template)
-    with open('template.json', 'w+') as f:
-        f.write(str(template))
-        f.close()
+        # print("Final result:")
+        # print(template)
+        with open('template.json', 'w+') as f:
+            f.write(str(template))
+            f.close()
 
 
 if __name__ == "__main__":
