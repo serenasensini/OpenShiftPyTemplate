@@ -114,7 +114,7 @@ objects = [
         'type': 'list',
         'name': 'resource_select',
         'message': 'Which kind of resource do you want to define?',
-        'choices': ["DeploymentConfig", "Deployment", "Service", "ConfigMap", "Secret", "Route", "None"]
+        'choices': ["Exit!", "DeploymentConfig", "Deployment", "Service", "ConfigMap", "Secret", "Route"]
     }
 ]
 
@@ -278,6 +278,40 @@ route_def_w_service = [
     },
 ]
 
+secret_def = [
+    {
+        'type': 'list',
+        'name': 'apiVersion',
+        'message': 'API Version',
+        'choices': ["v1"]
+    },
+    {
+        'type': 'input',
+        'name': 'name',
+        'message': 'Name'
+    },
+    {
+        'type': 'input',
+        'name': 'tot_data',
+        'message': 'How many entries do you want to configure?',
+        # 'validator': NumberValidator
+    }
+]
+
+secret_data = [
+    {
+        'type': 'input',
+        'name': 'key',
+        'message': 'Key'
+    },
+    {
+        'type': 'input',
+        'name': 'value',
+        'message': 'Value'
+    }
+]
+
+
 def general_infos(args):
     metadata = {"metadata": {
         "annotations": {
@@ -434,9 +468,9 @@ def route_definition(spec):
 
     if spec.get('enable_ssl'):
         object['spec']['tls'] = {
-                "insecureEdgeTerminationPolicy": "Redirect",
-                "termination": "edge"
-            }
+            "insecureEdgeTerminationPolicy": "Redirect",
+            "termination": "edge"
+        }
     else:
         del object['spec']['tls']
 
@@ -446,6 +480,20 @@ def route_definition(spec):
     #     object['spec']['selector'] = {
     #         spec.get("selector_resource"): spec.get("selector_value")
     #     }
+
+
+def secret_definition(apiVersion, name, data):
+    object = {
+        "apiVersion": apiVersion,
+        "stringData": data,
+        "kind": "Secret",
+        "metadata": {
+            "name": name,
+        },
+        "type": "Opaque"
+    }
+
+    template['objects'].append(object)
 
 
 def get_services():
@@ -509,16 +557,29 @@ def main():
                         ans_route_def = prompt(route_def_w_service, style=custom_style_2)
                         route_definition(ans_route_def)
 
-            elif ans_objects_choice.get("resource_select") == "None":
+            elif ans_objects_choice.get("resource_select") == "Deployment":
+                print("Not ready yet. Choose another one!")
+
+            elif ans_objects_choice.get("resource_select") == "Secret":
+
+                data = {}
+                ans_secret_def = prompt(secret_def, style=custom_style_2)
+                count = ans_secret_def.get('tot_data')
+                for occurence in range(0, int(count)):
+                    ans_secret_data = prompt(secret_data, style=custom_style_2)
+                    key = ans_secret_data.get('key')
+                    value = ans_secret_data.get('value')
+                    data[key] = value
+                secret_definition(ans_secret_def.get("apiVersion"), ans_secret_def.get("name"), data)
+
+            elif ans_objects_choice.get("resource_select") == "ConfigMap":
+                # FIXME: missing configmap definition
+                print("Not ready yet. Choose another one!")
+
+            elif ans_objects_choice.get("resource_select") == "Exit!":
                 interrupt = False
 
-
-        # FIXME: missing route definition
-        # FIXME: missing configmap definition
-        # FIXME: missing secret definition
-
-        # print("Final result:")
-        # print(template)
+        print("Thanks, bye!")
         with open('template.json', 'w+') as f:
             f.write(str(template))
             f.close()
