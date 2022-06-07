@@ -107,7 +107,7 @@ objects = [
         'type': 'list',
         'name': 'resource_select',
         'message': 'Which kind of resource do you want to define?',
-        'choices': ["Exit!", "DeploymentConfig", "Deployment", "Service", "ConfigMap", "Secret", "Route"]
+        'choices': ["Exit!", "DeploymentConfig", "Deployment", "Service", "ConfigMap", "Secret", "Route", "PersistentVolumeClaim"]
     }
 ]
 
@@ -169,7 +169,8 @@ service_def = [
     {
         'type': 'input',
         'name': 'name',
-        'message': 'Name'
+        'message': 'Name',
+        'validate': RFC1123Validator
     },
     {
         'type': 'input',
@@ -221,7 +222,8 @@ route_def = [
     {
         'type': 'input',
         'name': 'name',
-        'message': 'Name'
+        'message': 'Name',
+        'validate': RFC1123Validator
     },
     {
         'type': 'list',
@@ -281,7 +283,8 @@ secret_def = [
     {
         'type': 'input',
         'name': 'name',
-        'message': 'Name'
+        'message': 'Name',
+        'validate': RFC1123Validator
     },
     {
         'type': 'input',
@@ -320,7 +323,8 @@ configmap_def = [
     {
         'type': 'input',
         'name': 'name',
-        'message': 'Name'
+        'message': 'Name',
+        'validate': RFC1123Validator
     },
     {
         'type': 'input',
@@ -341,6 +345,36 @@ configmap_data = [
         'name': 'value',
         'message': 'Value'
     }
+]
+
+pvc_def = [
+    {
+        'type': 'list',
+        'name': 'apiVersion',
+        'message': 'API Version',
+        'choices': ["v1"]
+    },
+    {
+        'type': 'input',
+        'name': 'name',
+        'message': 'Name'
+    },
+    {
+        'type': 'list',
+        'name': 'storageMode',
+        'message': 'Storage Mode',
+        'choices': ["ReadOnlyMany", "ReadWriteMany", "ReadWriteOnce"]
+    },
+    {
+        'type': 'input',
+        'name': 'storageSize',
+        'message': 'Storage size (i.e.: 1Gi, 100Mi)'
+    },
+    {
+        'type': 'input',
+        'name': 'storageClass',
+        'message': 'StorageClass'
+    },
 ]
 
 def general_infos(args):
@@ -527,7 +561,6 @@ def configmap_definition(apiVersion, name, data):
     template['objects'].append(object)
 
 
-
 def secret_definition(apiVersion, name, data):
     object = {
         "apiVersion": apiVersion,
@@ -537,6 +570,29 @@ def secret_definition(apiVersion, name, data):
             "name": name,
         },
         "type": "Opaque"
+    }
+
+    template['objects'].append(object)
+
+
+def pvc_definition(spec):
+    object = {
+        "kind": "PersistentVolumeClaim",
+        "apiVersion": spec.get("apiVersion"),
+        "metadata": {
+            "name": spec.get("name")
+        },
+        "spec": {
+            "accessModes": [
+                spec.get("storageMode")
+            ],
+            "resources": {
+                "requests": {
+                    "storage": spec.get("storageSize")
+                }
+            },
+            "storageClassName": spec.get("storageClass")
+        }
     }
 
     template['objects'].append(object)
@@ -556,6 +612,7 @@ def get_services():
                     services_list.append(item['metadata']['name'])
     print(services_list)
     return set(services_list), ports_list
+
 
 
 def main():
@@ -628,6 +685,11 @@ def main():
                     value = ans_configmap_data.get('value')
                     data[key] = value
                 configmap_definition(ans_configmap_def.get("apiVersion"), ans_configmap_def.get("name"), data)
+
+            elif ans_objects_choice.get("resource_select") == "PersistentVolumeClaim":
+                # DEFINE: PVC
+                ans_pvc_choice = prompt(pvc_def, style=custom_style_2)
+                pvc_definition(ans_pvc_choice)
 
             elif ans_objects_choice.get("resource_select") == "Exit!":
                 interrupt = False
