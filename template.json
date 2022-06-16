@@ -1,1 +1,179 @@
-{'apiVersion': 'template.openshift.io/v1', 'kind': 'Template', 'objects': [{'apiVersion': 'v1', 'stringData': {'dbpass': 'password', 'dbuser': 'user', 'dbname': 'db'}, 'kind': 'Secret', 'metadata': {'name': 'mysecret'}, 'type': 'Opaque'}], 'metadata': {'annotations': {'openshift.io/display-name': '', 'openshift.io/documentation-url': '', 'description': '', 'openshift.io/long-description': '', 'openshift.io/provider': '', 'tags': ''}, 'name': 'template'}}
+{
+	"apiVersion": "template.openshift.io/v1",
+	"kind": "Template",
+	"objects": [{
+		"apiVersion": "apps.openshift.io/v1",
+		"kind": "DeploymentConfig",
+		"metadata": {
+			"name": "mydc",
+			"labels": {
+				"app": "myapp"
+			}
+		},
+		"spec": {
+			"selector": {
+				"app": "",
+				"deploymentconfig": ""
+			},
+			"replicas": 1,
+			"strategy": {
+				"type": "Rolling",
+				"rollingParams": {
+					"updatePeriodSeconds": 1,
+					"intervalSeconds": 1,
+					"timeoutSeconds": 600,
+					"maxUnavailable": "25%",
+					"maxSurge": "25%"
+				},
+				"resources": {},
+				"activeDeadlineSeconds": 1800
+			},
+			"template": {
+				"metadata": {
+					"labels": {
+						"app": "",
+						"deploymentconfig": ""
+					}
+				},
+				"spec": {
+					"containers": [{
+						"image": "busybox",
+						"name": "busybox",
+						"ports": [{
+							"containerPort": 8080,
+							"protocol": "TCP"
+						}],
+						"imagePullPolicy": "Always",
+						"terminationMessagePolicy": "File"
+					}],
+					"restartPolicy": "Always",
+					"terminationGracePeriodSeconds": 30,
+					"dnsPolicy": "ClusterFirst",
+					"securityContext": {}
+				}
+			},
+			"triggers": [{
+				"type": "ConfigChange"
+			}]
+		}
+	}, {
+		"apiVersion": "v1",
+		"kind": "Service",
+		"metadata": {
+			"name": "myservice",
+			"labels": {
+				"app": "myapp"
+			}
+		},
+		"spec": {
+			"ports": [{
+				"name": "8080-tcp",
+				"protocol": "TCP",
+				"port": 8080,
+				"targetPort": 8080
+			}],
+			"selector": {
+				"": ""
+			},
+			"type": "ClusterIP",
+			"sessionAffinity": ""
+		}
+	}, {
+		"apiVersion": "v1",
+		"data": {
+			"TZ": "Europe/Rome"
+		},
+		"kind": "ConfigMap",
+		"metadata": {
+			"name": "myconfigmap",
+			"labels": {
+				"app": "myapp"
+			}
+		},
+		"type": "Opaque"
+	}, {
+		"apiVersion": "v1",
+		"stringData": {
+			"pwd": "password"
+		},
+		"kind": "Secret",
+		"metadata": {
+			"name": "mysecret",
+			"labels": {
+				"app": "myapp"
+			}
+		},
+		"type": "Opaque"
+	}, {
+		"apiVersion": "v1",
+		"kind": "Route",
+		"metadata": {
+			"labels": {
+				"app": "myapp"
+			},
+			"name": "myroute"
+		},
+		"spec": {
+			"port": {
+				"targetPort": "8080-tcp"
+			},
+			"tls": {
+				"insecureEdgeTerminationPolicy": "Redirect",
+				"termination": "edge"
+			},
+			"to": {
+				"kind": "Service",
+				"name": "myservice",
+				"weight": 100
+			},
+			"wildcardPolicy": ""
+		}
+	}, {
+		"kind": "PersistentVolumeClaim",
+		"apiVersion": "v1",
+		"metadata": {
+			"name": "mypvc",
+			"labels": {
+				"pwd": "password"
+			}
+		},
+		"spec": {
+			"accessModes": ["ReadWriteOnce"],
+			"resources": {
+				"requests": {
+					"storage": "1Gi"
+				}
+			},
+			"storageClassName": "gp2"
+		}
+	}, {
+		"apiVersion": "image.openshift.io/v1",
+		"kind": "ImageStream",
+		"metadata": {
+			"name": "myimagestream"
+		},
+		"spec": {
+			"tags": [{
+				"name": "1.0.0",
+				"from": {
+					"kind": "DockerImage",
+					"name": "busybox"
+				},
+				"referencePolicy": {
+					"type": "Source"
+				}
+			}]
+		}
+	}],
+	"metadata": {
+		"annotations": {
+			"openshift.io/display-name": "OTC Template",
+			"openshift.io/documentation-url": "https://theredcode.it",
+			"description": "Lorem ipsum",
+			"openshift.io/long-description": "Lorem ipsum dolor sit amet",
+			"openshift.io/provider": "TheRedCode",
+			"tags": ""
+		},
+		"name": "template"
+	}
+}

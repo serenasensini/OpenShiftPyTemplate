@@ -1,8 +1,18 @@
-from PyInquirer import prompt
-from examples import custom_style_2
+from PyInquirer import prompt, style_from_dict, Token
 from prompt_toolkit.validation import Validator, ValidationError
 import re
 import json
+import yaml
+
+custom_style_2 = style_from_dict({
+    Token.Separator: '#cc5454',
+    Token.QuestionMark: '#673ab7 bold',
+    Token.Selected: '#cc5454',  # default
+    Token.Pointer: '#673ab7 bold',
+    Token.Instruction: '',  # default
+    Token.Answer: '#f44336 bold',
+    Token.Question: '',
+})
 
 template = {
     "apiVersion": "template.openshift.io/v1",
@@ -67,32 +77,38 @@ template_metadata = [
     {
         'type': 'input',
         'name': 'name',
-        'message': 'Let\'s start with the metadata. Choose a name for your template'
+        'message': 'Let\'s start with the metadata. Choose a name for your template',
+        'default': 'template'
     },
     {
         'type': 'input',
         'name': 'openshift.io/display-name',
-        'message': 'Display name'
+        'message': 'Display name',
+        'default': 'OTC Template'
     },
     {
         'type': 'input',
         'name': 'description',
-        'message': 'Brief description'
+        'message': 'Brief description',
+        'default': 'Lorem ipsum'
     },
     {
         'type': 'input',
         'name': 'openshift.io/long-description',
-        'message': 'Long description'
+        'message': 'Long description',
+        'default': 'Lorem ipsum dolor sit amet'
     },
     {
         'type': 'input',
         'name': 'openshift.io/provider',
-        'message': 'Provider'
+        'message': 'Provider',
+        'default': 'TheRedCode'
     },
     {
         'type': 'input',
         'name': 'openshift.io/documentation-url',
-        'message': 'Documentation URL'
+        'message': 'Documentation URL',
+        'default': 'https://theredcode.it'
     },
     {
         'type': 'input',
@@ -107,7 +123,8 @@ objects = [
         'type': 'list',
         'name': 'resource_select',
         'message': 'Which kind of resource do you want to define?',
-        'choices': ["Exit!", "DeploymentConfig", "Deployment", "Service", "ConfigMap", "Secret", "Route", "PersistentVolumeClaim"]
+        'choices': ["Exit!", "DeploymentConfig", "Deployment", "Service", "ConfigMap", "Secret", "Route",
+                    "PersistentVolumeClaim", "ImageStream"]
     }
 ]
 
@@ -121,7 +138,7 @@ deploymentconfig_def = [
     {
         'type': 'input',
         'name': 'name',
-        'message': 'Name',
+        'message': 'DeploymentConfig Name',
         'validate': RFC1123Validator
     },
     {
@@ -144,19 +161,14 @@ deploymentconfig_def = [
         'type': 'input',
         'name': 'containerPort',
         'message': 'Port',
-        # 'validate': PortValidator
+        'validate': PortValidator
     },
     {
         'type': 'list',
         'name': 'protocol',
         'message': 'Protocol',
         'choices': ["TCP", "UDP"]
-    },
-    {
-        'type': 'input',
-        'name': 'selector_value',
-        'message': 'Selector value'
-    },
+    }
 ]
 
 service_def = [
@@ -169,7 +181,7 @@ service_def = [
     {
         'type': 'input',
         'name': 'name',
-        'message': 'Name',
+        'message': 'Service Name',
         'validate': RFC1123Validator
     },
     {
@@ -190,18 +202,66 @@ service_def = [
         'message': 'Protocol',
         'choices': ["TCP", "UDP"]
     },
+]
+
+label_choice = [
     {
-        'type': 'list',
-        'name': 'selector_resource',
-        'message': 'Selector resource',
-        'choices': ["deploymentconfig", "deployment", "imagestream", "None"]
+        'type': 'confirm',
+        'name': 'label_choice',
+        'message': 'Do you want to add some labels?',
+    }
+]
+
+label_num = [
+    {
+        'type': 'input',
+        'name': 'tot_data',
+        'message': 'How many labels do you want to configure?',
+        'validate': NumberValidator
+    }
+]
+
+label_def = [
+    {
+        'type': 'input',
+        'name': 'key',
+        'message': 'Selector key'
     },
     {
         'type': 'input',
-        'name': 'selector_value',
-        'message': 'Selector value'
-    },
+        'name': 'value',
+        'message': 'Selector value',
+    }
+]
 
+image_stream_def = [
+    {
+        'type': 'list',
+        'name': 'apiVersion',
+        'message': 'API Version',
+        'choices': ["image.openshift.io/v1"]
+    },
+    {
+        'type': 'input',
+        'name': 'name',
+        'message': 'ImageStream Name'
+    },
+	{
+        'type': 'input',
+        'name': 'tag',
+        'message': 'Tag'
+    },
+    {
+        'type': 'list',
+        'name': 'kind',
+        'message': 'Kind',
+		'choices': ["DockerImage"]
+    },
+    {
+        'type': 'input',
+        'name': 'imageURL',
+        'message': 'Image URL'
+    },
 ]
 
 route_select = [
@@ -222,7 +282,7 @@ route_def = [
     {
         'type': 'input',
         'name': 'name',
-        'message': 'Name',
+        'message': 'Route Name',
         'validate': RFC1123Validator
     },
     {
@@ -254,7 +314,7 @@ route_def_w_service = [
     {
         'type': 'input',
         'name': 'name',
-        'message': 'Name'
+        'message': 'Route Name'
     },
     {
         'type': 'input',
@@ -283,7 +343,7 @@ secret_def = [
     {
         'type': 'input',
         'name': 'name',
-        'message': 'Name',
+        'message': 'Secret Name',
         'validate': RFC1123Validator
     },
     {
@@ -291,13 +351,7 @@ secret_def = [
         'name': 'tot_data',
         'message': 'How many entries do you want to configure?',
         'validate': NumberValidator
-    },
-    {
-        'type': 'input',
-        'name': 'replicas',
-        'message': 'Number of pod replicas',
-        'validate': NumberValidator
-    },
+    }
 ]
 
 secret_data = [
@@ -323,7 +377,7 @@ configmap_def = [
     {
         'type': 'input',
         'name': 'name',
-        'message': 'Name',
+        'message': 'ConfigMap Name',
         'validate': RFC1123Validator
     },
     {
@@ -357,7 +411,7 @@ pvc_def = [
     {
         'type': 'input',
         'name': 'name',
-        'message': 'Name'
+        'message': 'PVC Name'
     },
     {
         'type': 'list',
@@ -376,6 +430,7 @@ pvc_def = [
         'message': 'StorageClass'
     },
 ]
+
 
 def general_infos(args):
     metadata = {"metadata": {
@@ -402,7 +457,33 @@ def general_infos(args):
     return metadata
 
 
-def object_definition(kind, spec):
+def image_stream_definition(spec, labels):
+    object = {
+        "apiVersion": spec.get("apiVersion"),
+        "kind": "ImageStream",
+        "metadata": {
+            "name": spec.get("name")
+        },
+        "spec": {
+            "tags": [
+                {
+                    "name": spec.get("tag"),
+                    "from": {
+                        "kind": spec.get("kind"),
+                        "name": spec.get("imageURL")
+                    },
+                    "referencePolicy": {
+                        "type": "Source"
+                    }
+                }
+            ]
+        }
+    }
+
+    template['objects'].append(object)
+
+
+def dc_definition(kind, spec, labels):
     # ONLY FOR DC
     # FIXME: missing env & volumes
     object = {
@@ -410,17 +491,11 @@ def object_definition(kind, spec):
         "kind": kind,
         "metadata": {
             "name": spec.get("name") if spec.get("name") else '',
-            "labels":
-                {
-                    "app": spec.get("selector_value"),
-                }
+            "labels": labels
         },
 
         "spec": {
-            "selector": {
-                "app": spec.get("selector_value"),
-                "deploymentconfig": spec.get("selector_value")
-            },
+            "selector": {},
             "replicas": int(spec.get('replicas')) if spec.get('replicas') else 0,
             "strategy": {
                 "type": "Rolling",
@@ -437,8 +512,8 @@ def object_definition(kind, spec):
             "template": {
                 "metadata": {
                     "labels": {
-                        "app": spec.get("selector_value"),
-                        "deploymentconfig": spec.get("selector_value")
+                        "app": spec.get("selector_value") if not spec.get("selector_value") is None else "",
+                        "deploymentconfig": spec.get("selector_value") if not spec.get("selector_value") is None else "",
                     }
                 },
                 "spec": {
@@ -474,15 +549,22 @@ def object_definition(kind, spec):
         # ],
     })
 
+    if spec.get("selector_value"):
+        object['spec'] = {
+                    "app": spec.get("selector_value") if not spec.get("selector_value") is None else "",
+                    "deploymentconfig": spec.get("selector_value") if not spec.get("selector_value") is None else ""
+                }
+
     template['objects'].append(object)
 
 
-def service_definition(spec):
+def service_definition(spec, labels):
     object = {
         "apiVersion": spec.get("apiVersion"),
         "kind": "Service",
         "metadata": {
-            "name": spec.get("name")
+            "name": spec.get("name"),
+            "labels": labels
         },
         "spec": {
             "ports": [
@@ -501,18 +583,18 @@ def service_definition(spec):
 
     if spec.get("selector_resource") != "None":
         object['spec']['selector'] = {
-            spec.get("selector_resource"): spec.get("selector_value")
+            spec.get("selector_resource"): spec.get("selector_value") if not spec.get("selector_value") is None else "",
         }
 
     template['objects'].append(object)
 
 
-def route_definition(spec):
+def route_definition(spec, labels):
     object = {
         "apiVersion": "v1",
         "kind": "Route",
         "metadata": {
-            "labels": {},
+            "labels": labels,
             "name": spec.get("name")
         },
         "spec": {
@@ -547,13 +629,14 @@ def route_definition(spec):
     #     }
 
 
-def configmap_definition(apiVersion, name, data):
+def configmap_definition(apiVersion, name, labels, data):
     object = {
         "apiVersion": apiVersion,
         "data": data,
         "kind": "ConfigMap",
         "metadata": {
             "name": name,
+            "labels": labels
         },
         "type": "Opaque"
     }
@@ -561,13 +644,14 @@ def configmap_definition(apiVersion, name, data):
     template['objects'].append(object)
 
 
-def secret_definition(apiVersion, name, data):
+def secret_definition(apiVersion, name, labels, data):
     object = {
         "apiVersion": apiVersion,
         "stringData": data,
         "kind": "Secret",
         "metadata": {
             "name": name,
+            "labels": labels
         },
         "type": "Opaque"
     }
@@ -575,12 +659,13 @@ def secret_definition(apiVersion, name, data):
     template['objects'].append(object)
 
 
-def pvc_definition(spec):
+def pvc_definition(spec, labels):
     object = {
         "kind": "PersistentVolumeClaim",
         "apiVersion": spec.get("apiVersion"),
         "metadata": {
-            "name": spec.get("name")
+            "name": spec.get("name"),
+            "labels": labels
         },
         "spec": {
             "accessModes": [
@@ -614,8 +699,29 @@ def get_services():
     return set(services_list), ports_list
 
 
-
 def main():
+    print("""
+            #################################
+              ______   .___________.  ______ 
+             /  __  \  |           | /      |
+            |  |  |  | `---|  |----`|  ,----'
+            |  |  |  |     |  |     |  |     
+            |  `--'  |     |  |     |  `----.
+             \______/      |__|      \______|
+                                             
+            #################################
+                                                   
+            Welcome to OpenShift Template Configurator.
+            
+            A simple wizard to create a template for 
+            OpenShift, based on specs available
+            on the documentation.
+
+            #################################
+            
+            For further information: 
+            https://access.redhat.com/documentation/en-us/openshift_container_platform/4.1/html/images/using-templates
+    """)
     # START
     answers = prompt(start, style=custom_style_2)
     if answers.get("start_option"):
@@ -632,12 +738,36 @@ def main():
             if ans_objects_choice.get("resource_select") == "DeploymentConfig":
                 # DEFINE: DC
                 ans_container_def = prompt(deploymentconfig_def, style=custom_style_2)
-                object_definition('DeploymentConfig', ans_container_def)
+
+                labels = {}
+                ans_labels_choice = prompt(label_choice, style=custom_style_2)
+                if ans_labels_choice.get('label_choice'):
+                    ans_labels_num = prompt(label_num, style=custom_style_2)
+                    count = ans_labels_num.get('tot_data')
+                    for occurrence in range(0, int(count)):
+                        ans_labels_data = prompt(label_def, style=custom_style_2)
+                        key = ans_labels_data.get('key')
+                        value = ans_labels_data.get('value')
+                        labels[key] = value
+
+                dc_definition('DeploymentConfig', ans_container_def, labels)
 
             elif ans_objects_choice.get("resource_select") == "Service":
                 # DEFINE: service
                 ans_service_def = prompt(service_def, style=custom_style_2)
-                service_definition(ans_service_def)
+
+                labels = {}
+                ans_labels_choice = prompt(label_choice, style=custom_style_2)
+                if ans_labels_choice.get('label_choice'):
+                    ans_labels_num = prompt(label_num, style=custom_style_2)
+                    count = ans_labels_num.get('tot_data')
+                    for occurrence in range(0, int(count)):
+                        ans_labels_data = prompt(label_def, style=custom_style_2)
+                        key = ans_labels_data.get('key')
+                        value = ans_labels_data.get('value')
+                        labels[key] = value
+
+                service_definition(ans_service_def, labels)
 
             elif ans_objects_choice.get("resource_select") == "Route":
 
@@ -653,15 +783,36 @@ def main():
                                 item['choices'] = ports_list
 
                         ans_route_def = prompt(route_def, style=custom_style_2)
-                        route_definition(ans_route_def)
+
+                        labels = {}
+                        ans_labels_choice = prompt(label_choice, style=custom_style_2)
+                        if ans_labels_choice.get('label_choice'):
+                            ans_labels_num = prompt(label_num, style=custom_style_2)
+                            count = ans_labels_num.get('tot_data')
+                            for occurrence in range(0, int(count)):
+                                ans_labels_data = prompt(label_def, style=custom_style_2)
+                                key = ans_labels_data.get('key')
+                                value = ans_labels_data.get('value')
+                                labels[key] = value
+
+                        route_definition(ans_route_def, labels)
                     else:
                         print("No services found in current template. ")
 
                         ans_route_def = prompt(route_def_w_service, style=custom_style_2)
-                        route_definition(ans_route_def)
 
-            elif ans_objects_choice.get("resource_select") == "Deployment":
-                print("Not ready yet. Choose another one!")
+                        labels = {}
+                        ans_labels_choice = prompt(label_choice, style=custom_style_2)
+                        if ans_labels_choice.get('label_choice'):
+                            ans_labels_num = prompt(label_num, style=custom_style_2)
+                            count = ans_labels_num.get('tot_data')
+                            for occurrence in range(0, int(count)):
+                                ans_labels_data = prompt(label_def, style=custom_style_2)
+                                key = ans_labels_data.get('key')
+                                value = ans_labels_data.get('value')
+                                labels[key] = value
+
+                        route_definition(ans_route_def, labels)
 
             elif ans_objects_choice.get("resource_select") == "Secret":
 
@@ -673,7 +824,19 @@ def main():
                     key = ans_secret_data.get('key')
                     value = ans_secret_data.get('value')
                     data[key] = value
-                secret_definition(ans_secret_def.get("apiVersion"), ans_secret_def.get("name"), data)
+
+                labels = {}
+                ans_labels_choice = prompt(label_choice, style=custom_style_2)
+                if ans_labels_choice.get('label_choice'):
+                    ans_labels_num = prompt(label_num, style=custom_style_2)
+                    count = ans_labels_num.get('tot_data')
+                    for occurrence in range(0, int(count)):
+                        ans_labels_data = prompt(label_def, style=custom_style_2)
+                        key = ans_labels_data.get('key')
+                        value = ans_labels_data.get('value')
+                        labels[key] = value
+
+                secret_definition(ans_secret_def.get("apiVersion"), ans_secret_def.get("name"), labels, data)
 
             elif ans_objects_choice.get("resource_select") == "ConfigMap":
                 data = {}
@@ -684,35 +847,74 @@ def main():
                     key = ans_configmap_data.get('key')
                     value = ans_configmap_data.get('value')
                     data[key] = value
-                configmap_definition(ans_configmap_def.get("apiVersion"), ans_configmap_def.get("name"), data)
+
+                labels = {}
+                ans_labels_choice = prompt(label_choice, style=custom_style_2)
+                if ans_labels_choice.get('label_choice'):
+                    ans_labels_num = prompt(label_num, style=custom_style_2)
+                    count = ans_labels_num.get('tot_data')
+                    for occurrence in range(0, int(count)):
+                        ans_labels_data = prompt(label_def, style=custom_style_2)
+                        key = ans_labels_data.get('key')
+                        value = ans_labels_data.get('value')
+                        labels[key] = value
+
+                configmap_definition(ans_configmap_def.get("apiVersion"), ans_configmap_def.get("name"), labels, data)
 
             elif ans_objects_choice.get("resource_select") == "PersistentVolumeClaim":
                 # DEFINE: PVC
                 ans_pvc_choice = prompt(pvc_def, style=custom_style_2)
-                pvc_definition(ans_pvc_choice)
+
+                labels = {}
+                ans_labels_choice = prompt(label_choice, style=custom_style_2)
+                if ans_labels_choice.get('label_choice'):
+                    ans_labels_num = prompt(label_num, style=custom_style_2)
+                    count = ans_labels_num.get('tot_data')
+                    for occurrence in range(0, int(count)):
+                        ans_labels_data = prompt(label_def, style=custom_style_2)
+                        key = ans_labels_data.get('key')
+                        value = ans_labels_data.get('value')
+                        labels[key] = value
+
+                pvc_definition(ans_pvc_choice, data)
+
+            elif ans_objects_choice.get("resource_select") == "ImageStream":
+                # DEFINE: ImageStream
+                ans_image_stream_choice = prompt(image_stream_def, style=custom_style_2)
+
+                labels = {}
+                ans_labels_choice = prompt(label_choice, style=custom_style_2)
+                if ans_labels_choice.get('label_choice'):
+                    ans_labels_num = prompt(label_num, style=custom_style_2)
+                    count = ans_labels_num.get('tot_data')
+                    for occurrence in range(0, int(count)):
+                        ans_labels_data = prompt(label_def, style=custom_style_2)
+                        key = ans_labels_data.get('key')
+                        value = ans_labels_data.get('value')
+                        labels[key] = value
+
+                image_stream_definition(ans_image_stream_choice, data)
+
+            elif ans_objects_choice.get("resource_select") == "Deployment":
+                print("Not ready yet. Choose another one!")
 
             elif ans_objects_choice.get("resource_select") == "Exit!":
                 interrupt = False
 
-        print("Thanks, bye!")
+        print(template)
+        template_quoted = str(template).replace("\'", "\"")
+
         with open('template.json', 'w+') as f:
-            f.write(str(template))
+            f.write(str(template_quoted))
             f.close()
+
+        with open('template.json', 'r') as json_in, open('template.yaml', "w") as yaml_out:
+            json_payload = json.load(json_in)
+            result = yaml.dump(json_payload, sort_keys=False)
+            yaml_out.write(result)
+
+    print("Thanks, bye!")
 
 
 if __name__ == "__main__":
     main()
-
-# # 3rd STEP: objects
-#
-# objects = []
-#
-# # DC or D?
-#
-# name = input("DeploymentConfig or Deployment? ")
-#
-# # 4th STEP: networking
-#
-# # 5th STEP: configmaps & secrets
-#
-# # 6th STEP: params
