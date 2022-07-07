@@ -124,7 +124,7 @@ objects = [
         'name': 'resource_select',
         'message': 'Which kind of resource do you want to define?',
         'choices': ["Exit!", "DeploymentConfig", "Deployment", "Service", "ConfigMap", "Secret", "Route",
-                    "PersistentVolumeClaim", "ImageStream"]
+                    "PersistentVolumeClaim", "ImageStream", "PersistentVolume", "StatefulSet"]
     }
 ]
 
@@ -246,7 +246,7 @@ image_stream_def = [
         'name': 'name',
         'message': 'ImageStream Name'
     },
-	{
+    {
         'type': 'input',
         'name': 'tag',
         'message': 'Tag'
@@ -255,7 +255,7 @@ image_stream_def = [
         'type': 'list',
         'name': 'kind',
         'message': 'Kind',
-		'choices': ["DockerImage"]
+        'choices': ["DockerImage"]
     },
     {
         'type': 'input',
@@ -431,6 +431,42 @@ pvc_def = [
     },
 ]
 
+pv_def = [
+    {
+        'type': 'list',
+        'name': 'apiVersion',
+        'message': 'API Version',
+        'choices': ["v1"]
+    },
+    {
+        'type': 'input',
+        'name': 'name',
+        'message': 'PV Name'
+    },
+    {
+        'type': 'list',
+        'name': 'storageMode',
+        'message': 'Storage Mode',
+        'choices': ["ReadOnlyMany", "ReadWriteMany", "ReadWriteOnce"]
+    },
+    {
+        'type': 'input',
+        'name': 'storageSize',
+        'message': 'Storage size (i.e.: 1Gi, 100Mi)'
+    },
+    {
+        'type': 'input',
+        'name': 'storageClass',
+        'message': 'StorageClass'
+    },
+    {
+        'type': 'list',
+        'name': 'persistentVolumeReclaimPolicy',
+        'message': 'Reclaim Policy',
+        'choices': ["Retain", "Recycle", "Delete"]
+    },
+]
+
 
 def general_infos(args):
     metadata = {"metadata": {
@@ -513,7 +549,8 @@ def dc_definition(kind, spec, labels):
                 "metadata": {
                     "labels": {
                         "app": spec.get("selector_value") if not spec.get("selector_value") is None else "",
-                        "deploymentconfig": spec.get("selector_value") if not spec.get("selector_value") is None else "",
+                        "deploymentconfig": spec.get("selector_value") if not spec.get(
+                            "selector_value") is None else "",
                     }
                 },
                 "spec": {
@@ -551,9 +588,9 @@ def dc_definition(kind, spec, labels):
 
     if spec.get("selector_value"):
         object['spec'] = {
-                    "app": spec.get("selector_value") if not spec.get("selector_value") is None else "",
-                    "deploymentconfig": spec.get("selector_value") if not spec.get("selector_value") is None else ""
-                }
+            "app": spec.get("selector_value") if not spec.get("selector_value") is None else "",
+            "deploymentconfig": spec.get("selector_value") if not spec.get("selector_value") is None else ""
+        }
 
     template['objects'].append(object)
 
@@ -676,6 +713,31 @@ def pvc_definition(spec, labels):
                     "storage": spec.get("storageSize")
                 }
             },
+            "storageClassName": spec.get("storageClass")
+        }
+    }
+
+    template['objects'].append(object)
+
+
+def pv_definition(spec, labels):
+    object = {
+        "kind": "PersistentVolume",
+        "apiVersion": spec.get("apiVersion"),
+        "metadata": {
+            "name": spec.get("name"),
+            "labels": labels
+        },
+        "spec": {
+            "accessModes": [
+                spec.get("storageMode")
+            ],
+            "resources": {
+                "requests": {
+                    "storage": spec.get("storageSize")
+                }
+            },
+            "persistentVolumeReclaimPolicy": spec.get("persistentVolumeReclaimPolicy"),
             "storageClassName": spec.get("storageClass")
         }
     }
@@ -876,7 +938,7 @@ def main():
                         value = ans_labels_data.get('value')
                         labels[key] = value
 
-                pvc_definition(ans_pvc_choice, data)
+                pvc_definition(ans_pvc_choice, labels)
 
             elif ans_objects_choice.get("resource_select") == "ImageStream":
                 # DEFINE: ImageStream
@@ -896,6 +958,26 @@ def main():
                 image_stream_definition(ans_image_stream_choice, data)
 
             elif ans_objects_choice.get("resource_select") == "Deployment":
+                print("Not ready yet. Choose another one!")
+
+            elif ans_objects_choice.get("resource_select") == "PersistentVolume":
+                # DEFINE: PV
+                ans_pv_choice = prompt(pv_def, style=custom_style_2)
+
+                labels = {}
+                ans_labels_choice = prompt(label_choice, style=custom_style_2)
+                if ans_labels_choice.get('label_choice'):
+                    ans_labels_num = prompt(label_num, style=custom_style_2)
+                    count = ans_labels_num.get('tot_data')
+                    for occurrence in range(0, int(count)):
+                        ans_labels_data = prompt(label_def, style=custom_style_2)
+                        key = ans_labels_data.get('key')
+                        value = ans_labels_data.get('value')
+                        labels[key] = value
+
+                pv_definition(ans_pv_choice, labels)
+
+            elif ans_objects_choice.get("resource_select") == "StatefulSet":
                 print("Not ready yet. Choose another one!")
 
             elif ans_objects_choice.get("resource_select") == "Exit!":
