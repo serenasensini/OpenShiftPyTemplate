@@ -3,6 +3,8 @@ from prompt_toolkit.validation import Validator, ValidationError
 import re
 import json
 import yaml
+import sys
+import os
 
 custom_style_2 = style_from_dict({
     Token.Separator: '#cc5454',
@@ -33,9 +35,6 @@ class NumberValidator(Validator):
 
 class RFC1123Validator(Validator):
 
-    # def contains_number(self, value):
-    #     return any(not c.isdigit() for c in value)
-
     def contains_symbols(self, value):
         regex = re.compile('^(?![0-9]+$)(?!-)[a-zA-Z0-9-]{,63}(?<!-)$')
         is_match = regex.match(value) is not None
@@ -62,6 +61,22 @@ class PortValidator(Validator):
                 raise ValueError
         except ValueError:
             raise ValidationError(message="Please enter a valid port.",
+                                  cursor_position=len(document.text))
+
+
+class StorageSizeValidator(Validator):
+
+    def contains_symbols(self, value):
+        regex = re.compile('[0-9]+(Gi|Mi){1}')
+        is_match = regex.match(value) is not None
+        return is_match
+
+    def validate(self, document):
+        try:
+            if not self.contains_symbols(document.text):
+                raise ValueError
+        except ValueError:
+            raise ValidationError(message="Please enter a valid value (i.e.: 10Gi, 100Mi).",
                                   cursor_position=len(document.text))
 
 
@@ -150,7 +165,7 @@ deploymentconfig_def = [
     {
         'type': 'input',
         'name': 'image',
-        'message': 'Image URL'
+        'message': 'Image URL (specify name and tag)'
     },
     {
         'type': 'input',
@@ -422,7 +437,8 @@ pvc_def = [
     {
         'type': 'input',
         'name': 'storageSize',
-        'message': 'Storage size (i.e.: 1Gi, 100Mi)'
+        'message': 'Storage size (i.e.: 1Gi, 100Mi)',
+        'validate': StorageSizeValidator
     },
     {
         'type': 'input',
@@ -452,7 +468,8 @@ pv_def = [
     {
         'type': 'input',
         'name': 'storageSize',
-        'message': 'Storage size (i.e.: 1Gi, 100Mi)'
+        'message': 'Storage size (i.e.: 1Gi, 100Mi)',
+        'validate': StorageSizeValidator
     },
     {
         'type': 'input',
@@ -465,6 +482,61 @@ pv_def = [
         'message': 'Reclaim Policy',
         'choices': ["Retain", "Recycle", "Delete"]
     },
+]
+
+deployment_def = [
+    {
+        'type': 'list',
+        'name': 'apiVersion',
+        'message': 'API Version?',
+        'choices': ["apps/v1"]
+    },
+    {
+        'type': 'input',
+        'name': 'name',
+        'message': 'Deployment Name',
+        'validate': RFC1123Validator
+    },
+    {
+        'type': 'input',
+        'name': 'replicas',
+        'message': 'Number of pod replicas',
+        'validate': NumberValidator
+    },
+    {
+        'type': 'input',
+        'name': 'image',
+        'message': 'Image URL (specify name and tag)'
+    },
+    {
+        'type': 'input',
+        'name': 'image_name',
+        'message': 'Image Name'
+    },
+    {
+        'type': 'input',
+        'name': 'containerPort',
+        'message': 'Port',
+        'validate': PortValidator
+    },
+    {
+        'type': 'list',
+        'name': 'protocol',
+        'message': 'Protocol',
+        'choices': ["TCP", "UDP"]
+    },
+    {
+        'type': 'list',
+        'name': 'imagePullPolicy',
+        'message': 'Image Pull Policy',
+        'choices': ["Always", "IfNotPresent", "Never"]
+    },
+    {
+        'type': 'list',
+        'name': 'restartPolicy',
+        'message': 'POD Restart Policy',
+        'choices': ["Always", "OnFailure", "Never"]
+    }
 ]
 
 
@@ -519,12 +591,12 @@ def image_stream_definition(spec, labels):
     template['objects'].append(object)
 
 
-def dc_definition(kind, spec, labels):
+def dc_definition(spec, labels):
     # ONLY FOR DC
     # FIXME: missing env & volumes
     object = {
         "apiVersion": spec.get("apiVersion"),
-        "kind": kind,
+        "kind": "DeploymentConfig",
         "metadata": {
             "name": spec.get("name") if spec.get("name") else '',
             "labels": labels
@@ -761,6 +833,60 @@ def get_services():
     return set(services_list), ports_list
 
 
+def deployment_definition(spec, labels):
+    object = {
+        "apiVersion": spec.get("apiVersion"),
+        "kind": "Deployment",
+        "metadata": {
+            "name": spec.get("name") if spec.get("name") else '',
+            "labels": labels
+        },
+
+        "spec": {
+            "selector": {
+                "matchLabels": labels
+            },
+            "replicas": int(spec.get('replicas')) if spec.get('replicas') else 0,
+            "template": {
+                "metadata": {
+                    "labels": {
+                        "app": spec.get("selector_value") if not spec.get("selector_value") is None else "",
+                        "deploymentconfig": spec.get("selector_value") if not spec.get(
+                            "selector_value") is None else "",
+                    }
+                },
+                "spec": {
+                    "containers": [],
+                    "restartPolicy": spec.get('restartPolicy'),
+                    "terminationGracePeriodSeconds": 30,
+                    "dnsPolicy": "ClusterFirst",
+                    "securityContext": {}
+                }
+            }
+        },
+    }
+
+    object['spec']['template']['spec']['containers'].append({
+        'image': spec.get('image') if spec.get('image') else '',
+        'name': spec.get('image_name') if spec.get('image_name') else '',
+        'ports': [
+            {
+                "containerPort": int(spec.get('containerPort')),
+                "protocol": spec.get('protocol')
+            }
+        ] if spec.get('containerPort') else '',
+        "imagePullPolicy": spec.get('imagePullPolicy')
+    })
+
+    if spec.get("selector_value"):
+        object['spec'] = {
+            "app": spec.get("selector_value") if not spec.get("selector_value") is None else "",
+            "deploymentconfig": spec.get("selector_value") if not spec.get("selector_value") is None else ""
+        }
+
+    template['objects'].append(object)
+
+
 def main():
     print("""
             #################################
@@ -812,7 +938,7 @@ def main():
                         value = ans_labels_data.get('value')
                         labels[key] = value
 
-                dc_definition('DeploymentConfig', ans_container_def, labels)
+                dc_definition(ans_container_def, labels)
 
             elif ans_objects_choice.get("resource_select") == "Service":
                 # DEFINE: service
@@ -958,7 +1084,21 @@ def main():
                 image_stream_definition(ans_image_stream_choice, data)
 
             elif ans_objects_choice.get("resource_select") == "Deployment":
-                print("Not ready yet. Choose another one!")
+                # DEFINE: DEPLOYMENT
+                ans_container_def = prompt(deployment_def, style=custom_style_2)
+
+                labels = {}
+                ans_labels_choice = prompt(label_choice, style=custom_style_2)
+                if ans_labels_choice.get('label_choice'):
+                    ans_labels_num = prompt(label_num, style=custom_style_2)
+                    count = ans_labels_num.get('tot_data')
+                    for occurrence in range(0, int(count)):
+                        ans_labels_data = prompt(label_def, style=custom_style_2)
+                        key = ans_labels_data.get('key')
+                        value = ans_labels_data.get('value')
+                        labels[key] = value
+
+                deployment_definition(ans_container_def, labels)
 
             elif ans_objects_choice.get("resource_select") == "PersistentVolume":
                 # DEFINE: PV
@@ -983,20 +1123,29 @@ def main():
             elif ans_objects_choice.get("resource_select") == "Exit!":
                 interrupt = False
 
-        print(template)
         template_quoted = str(template).replace("\'", "\"")
 
         with open('template.json', 'w+') as f:
             f.write(str(template_quoted))
             f.close()
 
-        with open('template.json', 'r') as json_in, open('template.yaml', "w") as yaml_out:
-            json_payload = json.load(json_in)
-            result = yaml.dump(json_payload, sort_keys=False)
-            yaml_out.write(result)
+        try:
+            with open('template.json', 'r') as json_in, open('template.yaml', "w") as yaml_out:
+                json_payload = json.load(json_in)
+                result = yaml.dump(json_payload, sort_keys=False)
+                yaml_out.write(result)
+        except Exception as e:
+            print("Created template is not valid.")
 
     print("Thanks, bye!")
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print('Interrupted')
+        try:
+            sys.exit(0)
+        except SystemExit:
+            os._exit(0)

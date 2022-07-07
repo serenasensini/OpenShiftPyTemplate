@@ -27,14 +27,14 @@ python3 main.py
 - ConfigMap
 - Secret
 - PVC
-- Imagestream
+- Imagestream 
+- Deployment
+- PV
 
 # TODO
 
 Add:
 - Service (NodePort, ExternalName)
-- Deployment
-- PV
 - StatefulSet
 - Build
 - BuildConfig
